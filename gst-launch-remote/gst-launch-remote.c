@@ -22,6 +22,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <gst/net/net.h>
 
 GST_DEBUG_CATEGORY_STATIC (debug_category);
 #define GST_CAT_DEFAULT debug_category
@@ -581,6 +582,41 @@ read_line_cb (GObject * source_object, GAsyncResult * res, gpointer user_data)
       } else {
         ok = FALSE;
       }
+    } else if (g_str_has_prefix (line, "+NETCLOCK ")) {
+      gchar **command;
+
+      if (*(line + sizeof ("+NETCLOCK") - 1) == '\0')
+        command = g_new0 (gchar *, 1);
+      else
+        command = g_strsplit (line + sizeof ("+NETCLOCK"), " ", 2);
+
+      if (self->net_clock)
+        gst_object_unref (self->net_clock);
+      self->net_clock = NULL;
+      if (command[0] && command[1]) {
+        gint64 port = g_ascii_strtoll (command[1], NULL, 10);
+        GST_DEBUG ("Setting netclock %s %" G_GINT64_FORMAT, command[0], port);
+        self->net_clock = gst_net_client_clock_new ("netclock", command[0], port, 0);
+      } else {
+        GST_DEBUG ("Unsetting netclock");
+      }
+
+      g_strfreev (command);
+    } else if (g_str_has_prefix (line, "+BASETIME ")) {
+      gchar *endptr = NULL;
+      guint64 base_time = g_ascii_strtoull (line + sizeof ("+BASETIME"), &endptr, 10);
+
+      if (*endptr != '\0') {
+        ok = FALSE;
+        self->base_time = GST_CLOCK_TIME_NONE;
+      } else {
+        self->base_time = base_time;
+        GST_DEBUG ("Setting base time %" GST_TIME_FORMAT, GST_TIME_ARGS (base_time));
+        if (self->pipeline) {
+          gst_element_set_base_time (self->pipeline, base_time);
+          gst_element_set_start_time (self->pipeline, GST_CLOCK_TIME_NONE);
+        }
+      }
     } else if (!g_str_has_prefix (line, "+") && !g_str_has_prefix (line, "-")) {
       gst_launch_remote_set_pipeline (self, line);
     } else {
@@ -688,6 +724,14 @@ gst_launch_remote_set_pipeline (GstLaunchRemote * self, const gchar * pipeline_s
       self);
 
   gst_object_unref (bus);
+
+  if (self->net_clock)
+    gst_pipeline_use_clock (GST_PIPELINE (self->pipeline), self->net_clock);
+
+  if (self->base_time != GST_CLOCK_TIME_NONE) {
+    gst_element_set_base_time (self->pipeline, self->base_time);
+    gst_element_set_start_time (self->pipeline, GST_CLOCK_TIME_NONE);
+  }
 }
 
 static gpointer

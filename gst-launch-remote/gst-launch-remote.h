@@ -50,6 +50,9 @@ typedef struct {
   GstState target_state;
   gboolean is_live;
 
+  GstClock *net_clock;
+  GstClockTime base_time;
+
   GSocketService *service;
   GSocketConnection *connection;
   GDataInputStream *distream;
