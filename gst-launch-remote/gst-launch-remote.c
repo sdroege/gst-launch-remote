@@ -281,17 +281,16 @@ set_message (GstLaunchRemote * self, const gchar * format, ...)
   gchar *message;
   va_list args;
 
-  if (!self->app_context.set_message) {
-    return;
-  }
-
   va_start (args, format);
   message = g_strdup_vprintf (format, args);
   va_end (args);
 
-  self->app_context.set_message (message, self->app_context.app);
+  if (self->app_context.set_message) {
+    self->app_context.set_message (message, self->app_context.app);
+  }
 
-  g_free (message);
+  g_free (self->last_message);
+  self->last_message = message;
 }
 
 static gboolean
@@ -620,13 +619,15 @@ read_line_cb (GObject * source_object, GAsyncResult * res, gpointer user_data)
     } else if (g_str_has_prefix (line, "+STAT")) {
       GstClockTime position = -1, duration = -1;
       gchar *tmp;
-      GstState s;
+      GstState s = GST_STATE_VOID_PENDING;
 
-      gst_element_query_duration (self->pipeline, GST_FORMAT_TIME, &duration);
-      gst_element_query_position (self->pipeline, GST_FORMAT_TIME, &position);
-      s = GST_STATE (self->pipeline);
+      if (self->pipeline) {
+        gst_element_query_duration (self->pipeline, GST_FORMAT_TIME, &duration);
+        gst_element_query_position (self->pipeline, GST_FORMAT_TIME, &position);
+        s = GST_STATE (self->pipeline);
+      }
 
-      tmp = g_strdup_printf ("%" GST_TIME_FORMAT " / %" GST_TIME_FORMAT " @ %s\n", GST_TIME_ARGS (position), GST_TIME_ARGS (duration), gst_element_state_get_name (s));
+      tmp = g_strdup_printf ("%" GST_TIME_FORMAT " / %" GST_TIME_FORMAT " @ %s\nLast message: %s\n", GST_TIME_ARGS (position), GST_TIME_ARGS (duration), gst_element_state_get_name (s), GST_STR_NULL (self->last_message));
       g_output_stream_write_all (self->ostream, tmp, strlen (tmp), NULL, NULL, NULL);
       g_free (tmp);
     } else if (!g_str_has_prefix (line, "+") && !g_str_has_prefix (line, "-")) {

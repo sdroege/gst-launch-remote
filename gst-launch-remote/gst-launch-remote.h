@@ -49,6 +49,7 @@ typedef struct {
   GstElement *video_sink;
   GstState target_state;
   gboolean is_live;
+  gchar *last_message;
 
   GstClock *net_clock;
   GstClockTime base_time;
