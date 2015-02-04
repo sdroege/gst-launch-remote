@@ -617,6 +617,18 @@ read_line_cb (GObject * source_object, GAsyncResult * res, gpointer user_data)
           gst_element_set_start_time (self->pipeline, GST_CLOCK_TIME_NONE);
         }
       }
+    } else if (g_str_has_prefix (line, "+STAT")) {
+      GstClockTime position = -1, duration = -1;
+      gchar *tmp;
+      GstState s;
+
+      gst_element_query_duration (self->pipeline, GST_FORMAT_TIME, &duration);
+      gst_element_query_position (self->pipeline, GST_FORMAT_TIME, &position);
+      s = GST_STATE (self->pipeline);
+
+      tmp = g_strdup_printf ("%" GST_TIME_FORMAT " / %" GST_TIME_FORMAT " @ %s\n", GST_TIME_ARGS (position), GST_TIME_ARGS (duration), gst_element_state_get_name (s));
+      g_output_stream_write_all (self->ostream, tmp, strlen (tmp), NULL, NULL, NULL);
+      g_free (tmp);
     } else if (!g_str_has_prefix (line, "+") && !g_str_has_prefix (line, "-")) {
       gst_launch_remote_set_pipeline (self, line);
     } else {
