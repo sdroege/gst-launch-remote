@@ -909,6 +909,7 @@ gst_launch_remote_new (const GstLaunchRemoteAppContext * ctx)
   g_once (&once, gst_launch_remote_init, NULL);
 
   self->app_context = *ctx;
+  self->base_time = GST_CLOCK_TIME_NONE;
   self->thread = g_thread_new ("gst-launch-remote", gst_launch_remote_main, self);
 
   return self;
