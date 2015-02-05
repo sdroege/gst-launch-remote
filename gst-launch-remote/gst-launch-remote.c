@@ -42,16 +42,19 @@ static void
 send_debug (const gchar * prefix, const gchar * message)
 {
   GList *l;
-  GOutputVector data[4];
+  GOutputVector data[5];
+  static guint count = 0;
 
-  data[0].buffer = prefix;
-  data[0].size = strlen (prefix);
-  data[1].buffer = ": ";
-  data[1].size = 2;
-  data[2].buffer = message;
-  data[2].size = strlen (message);
-  data[3].buffer = "\n";
-  data[3].size = 1;
+  data[0].buffer = g_strdup_printf ("0x%010u ", count++);
+  data[0].size = strlen (data[0].buffer);
+  data[1].buffer = prefix;
+  data[1].size = strlen (prefix);
+  data[2].buffer = ": ";
+  data[2].size = 2;
+  data[3].buffer = message;
+  data[3].size = strlen (message);
+  data[4].buffer = "\n";
+  data[4].size = 1;
 
   G_LOCK (debug_sockets);
   for (l = debug_sockets; l; l = l->next) {
