@@ -54,6 +54,7 @@ typedef struct {
   GstClock *net_clock;
   GstClockTime base_time;
 
+  GMutex lock;
   GSocketService *service;
   GSocketConnection *connection;
   GDataInputStream *distream;

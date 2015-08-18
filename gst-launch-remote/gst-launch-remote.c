@@ -279,6 +279,46 @@ priv_gst_debug_logcat (GstDebugCategory * category, GstDebugLevel level,
 }
 
 static void
+send_pipeline_dump (GstLaunchRemote * self, const gchar * dest, gint port)
+{
+  GError *err = NULL;
+  GSocketConnection *connection = NULL;
+  GSocketClient *client = g_socket_client_new ();
+  GOutputStream *ostream;
+
+  gchar *dump_str;
+
+  connection = g_socket_client_connect_to_host (client, dest, port, NULL, &err);
+  if (!connection) {
+    GST_ERROR ("ERROR: Can't connect to remote: %s", err->message);
+    g_clear_error (&err);
+    return;
+  }
+
+  ostream = g_io_stream_get_output_stream (G_IO_STREAM (connection));
+
+  dump_str =
+      gst_debug_bin_to_dot_data (GST_BIN (self->pipeline),
+      GST_DEBUG_GRAPH_SHOW_ALL);
+  if (dump_str == NULL) {
+    GST_ERROR ("ERROR: failed to collect dump data: %s", err->message);
+    goto done;
+  }
+
+  if (!g_output_stream_write_all (ostream, dump_str, strlen (dump_str), NULL,
+          NULL, &err)) {
+    GST_ERROR ("ERROR: failed to send data: %s", err->message);
+    g_clear_error (&err);
+  }
+
+  g_free (dump_str);
+
+done:
+  g_object_unref (connection);
+  g_object_unref (client);
+}
+
+static void
 set_message (GstLaunchRemote * self, const gchar * format, ...)
 {
   gchar *message;
@@ -494,6 +534,27 @@ handle_eof (GstLaunchRemote * self)
 }
 
 static void
+write_to_remote (GstLaunchRemote * self, const gchar * format, ...)
+{
+  gchar *tmp;
+  va_list varargs;
+
+  if (self->connection == NULL)
+    return;
+
+  va_start (varargs, format);
+  tmp = g_strdup_vprintf (format, varargs);
+  va_end (varargs);
+
+  g_mutex_lock (&self->lock);
+  g_output_stream_write_all (self->ostream, tmp, strlen (tmp), NULL, NULL,
+      NULL);
+  g_mutex_unlock (&self->lock);
+
+  g_free (tmp);
+}
+
+static void
 read_line_cb (GObject * source_object, GAsyncResult * res, gpointer user_data)
 {
   GDataInputStream *distream = G_DATA_INPUT_STREAM (source_object);
@@ -518,13 +579,17 @@ read_line_cb (GObject * source_object, GAsyncResult * res, gpointer user_data)
   if (line) {
     gboolean ok = TRUE;
 
+    /* Remove trailing \r if present */
+    line = g_strchomp (line);
+
     if (g_str_has_prefix (line, "+DEBUG ")) {
       gchar *address = line + sizeof ("+DEBUG ") - 1;
       gchar *colon = strchr (address, ':');
+      gchar *cats_str;
 
       ok = FALSE;
       if (colon) {
-        gint port = strtol (colon + 1, NULL, 10);
+        gint port = strtol (colon + 1, &cats_str, 10);
 
         if (port > 0) {
           GSocketAddress *addr;
@@ -542,13 +607,18 @@ read_line_cb (GObject * source_object, GAsyncResult * res, gpointer user_data)
                 ok = TRUE;
                 s->address = addr;
                 gst_debug_set_active (TRUE);
-                gst_debug_set_default_threshold (GST_LEVEL_DEBUG);
                 break;
               }
             }
+            if (cats_str && cats_str[0])
+              gst_debug_set_threshold_from_string (cats_str, TRUE);
+            else
+              gst_debug_set_default_threshold (GST_LEVEL_DEBUG);
             G_UNLOCK (debug_sockets);
           }
         }
+      } else {
+        write_to_remote (self, "Usage: +DEBUG host-or-IP:port [debug config]");
       }
     } else if (g_str_has_prefix (line, "-DEBUG")) {
       GList *l;
@@ -598,7 +668,8 @@ read_line_cb (GObject * source_object, GAsyncResult * res, gpointer user_data)
       if (command[0] && command[1]) {
         gint64 port = g_ascii_strtoll (command[1], NULL, 10);
         GST_DEBUG ("Setting netclock %s %" G_GINT64_FORMAT, command[0], port);
-        self->net_clock = gst_net_client_clock_new ("netclock", command[0], port, 0);
+        self->net_clock =
+            gst_net_client_clock_new ("netclock", command[0], port, 0);
       } else {
         GST_DEBUG ("Unsetting netclock");
       }
@@ -606,14 +677,16 @@ read_line_cb (GObject * source_object, GAsyncResult * res, gpointer user_data)
       g_strfreev (command);
     } else if (g_str_has_prefix (line, "+BASETIME ")) {
       gchar *endptr = NULL;
-      guint64 base_time = g_ascii_strtoull (line + sizeof ("+BASETIME"), &endptr, 10);
+      guint64 base_time =
+          g_ascii_strtoull (line + sizeof ("+BASETIME"), &endptr, 10);
 
       if (*endptr != '\0') {
         ok = FALSE;
         self->base_time = GST_CLOCK_TIME_NONE;
       } else {
         self->base_time = base_time;
-        GST_DEBUG ("Setting base time %" GST_TIME_FORMAT, GST_TIME_ARGS (base_time));
+        GST_DEBUG ("Setting base time %" GST_TIME_FORMAT,
+            GST_TIME_ARGS (base_time));
         if (self->pipeline) {
           gst_element_set_base_time (self->pipeline, base_time);
           gst_element_set_start_time (self->pipeline, GST_CLOCK_TIME_NONE);
@@ -630,9 +703,28 @@ read_line_cb (GObject * source_object, GAsyncResult * res, gpointer user_data)
         s = GST_STATE (self->pipeline);
       }
 
-      tmp = g_strdup_printf ("%" GST_TIME_FORMAT " / %" GST_TIME_FORMAT " @ %s\nLast message: %s\n", GST_TIME_ARGS (position), GST_TIME_ARGS (duration), gst_element_state_get_name (s), GST_STR_NULL (self->last_message));
-      g_output_stream_write_all (self->ostream, tmp, strlen (tmp), NULL, NULL, NULL);
+      tmp =
+          g_strdup_printf ("%" GST_TIME_FORMAT " / %" GST_TIME_FORMAT
+          " @ %s\nLast message: %s\n", GST_TIME_ARGS (position),
+          GST_TIME_ARGS (duration), gst_element_state_get_name (s),
+          GST_STR_NULL (self->last_message));
+      g_output_stream_write_all (self->ostream, tmp, strlen (tmp), NULL, NULL,
+          NULL);
       g_free (tmp);
+    } else if (g_str_has_prefix (line, "+DUMP ")) {
+      gchar *address = line + sizeof ("+DUMP ") - 1;
+      gchar *colon = strchr (address, ':');
+      if (colon) {
+        gint port = strtol (colon + 1, NULL, 10);
+
+        if (port > 0) {
+          *colon = '\0';
+          send_pipeline_dump (self, address, port);
+        }
+      } else {
+        write_to_remote (self,
+            "Send a pipeline .dot dump to a remote port. Usage: +DUMP host-or-IP:port");
+      }
     } else if (!g_str_has_prefix (line, "+") && !g_str_has_prefix (line, "-")) {
       gst_launch_remote_set_pipeline (self, line);
     } else {
@@ -688,7 +780,8 @@ incoming_cb (GSocketService * service, GSocketConnection * connection,
 }
 
 static void
-gst_launch_remote_set_pipeline (GstLaunchRemote * self, const gchar * pipeline_string)
+gst_launch_remote_set_pipeline (GstLaunchRemote * self,
+    const gchar * pipeline_string)
 {
   GstBus *bus;
   GSource *bus_source;
@@ -885,7 +978,8 @@ gst_launch_remote_main (gpointer user_data)
 static gpointer
 gst_launch_remote_init (gpointer user_data)
 {
-  GST_DEBUG_CATEGORY_INIT (debug_category, "gst-launch-remote", 0, "GstLaunchRemote");
+  GST_DEBUG_CATEGORY_INIT (debug_category, "gst-launch-remote", 0,
+      "GstLaunchRemote");
   gst_debug_set_threshold_for_name ("gst-launch-remote", GST_LEVEL_DEBUG);
 
   g_set_print_handler (priv_glib_print_handler);
@@ -914,7 +1008,9 @@ gst_launch_remote_new (const GstLaunchRemoteAppContext * ctx)
 
   self->app_context = *ctx;
   self->base_time = GST_CLOCK_TIME_NONE;
-  self->thread = g_thread_new ("gst-launch-remote", gst_launch_remote_main, self);
+  self->thread =
+      g_thread_new ("gst-launch-remote", gst_launch_remote_main, self);
+  g_mutex_init (&self->lock);
 
   return self;
 }
@@ -924,6 +1020,7 @@ gst_launch_remote_free (GstLaunchRemote * self)
 {
   g_main_loop_quit (self->main_loop);
   g_thread_join (self->thread);
+  g_mutex_clear (&self->lock);
   g_slice_free (GstLaunchRemote, self);
 }
 
