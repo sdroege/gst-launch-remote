@@ -2,6 +2,10 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 
+# Uncomment the next 2 lines to do debugging with ndk-gdb:
+#APP_OPTIM:= debug
+#LOCAL_CFLAGS    := -ggdb -O0
+
 LOCAL_MODULE    := android_launch
 LOCAL_SRC_FILES := android-launch.c ../../gst-launch-remote/gst-launch-remote.c
 LOCAL_SHARED_LIBRARIES := gstreamer_android
