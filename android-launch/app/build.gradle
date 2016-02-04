@@ -4,23 +4,64 @@ android {
     compileSdkVersion 23
     buildToolsVersion "23.0.2"
 
+    sourceSets {
+        main {
+            // Avoid using the built in JNI generation plugin
+            jni.srcDirs = []
+        }
+    }
+
     defaultConfig {
         applicationId "com.centricular.android_launch"
-        minSdkVersion 9
+        minSdkVersion 15
         targetSdkVersion 23
         versionCode 1
         versionName "1.0"
     }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+
+    // Before compiling our app, prepare NDK code
+    tasks.withType(JavaCompile) {
+        compileTask -> compileTask.dependsOn ndkLibsToJar
+    }
+
+    // Packs ndk into JAR
+    task ndkLibsToJar(type: Zip, dependsOn: 'ndkBuild', description: 'Create a JAR of the native libs') {
+        destinationDir new File(buildDir, 'libs')
+        baseName 'ndk-libs'
+        extension 'jar'
+        from(new File(buildDir, 'libs')) { include '**/*.so' }
+        into 'lib/'
+    }
+
+    // Build native code using mk files like on Eclipse
+    task ndkBuild(type: Exec, description: 'Compile JNI source via NDK') {
+        def gstRoot = ''
+
+        if (hasProperty('gstAndroidRoot'))
+            gstRoot = gstAndroidroot
+        else
+            gstRoot = '~/cerbero/dist/android_armv7'
+
+        commandLine "$android.ndkDirectory/ndk-build",
+                'NDK_PROJECT_PATH=build',
+                'APP_BUILD_SCRIPT=src/main/jni/Android.mk',
+                'NDK_APPLICATION_MK=src/main/jni/Application.mk',
+                'GSTREAMER_JAVA_SRC_DIR=src/main/java',
+                "GSTREAMER_ROOT_ANDROID=$gstRoot"
+    }
 }
 
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
+    // Adds our jar file containing NDK code (.so files)
+    compile files("$buildDir/libs/ndk-libs.jar")
     testCompile 'junit:junit:4.12'
     compile 'com.android.support:appcompat-v7:23.1.1'
 }

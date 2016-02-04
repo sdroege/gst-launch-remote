@@ -29,7 +29,7 @@
 #include <gst/video/video.h>
 #include <pthread.h>
 
-#include "../../gst-launch-remote/gst-launch-remote.h"
+#include "../../../../../gst-launch-remote/gst-launch-remote.h"
 
 GST_DEBUG_CATEGORY_STATIC (debug_category);
 #define GST_CAT_DEFAULT debug_category

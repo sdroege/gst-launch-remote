@@ -7,7 +7,7 @@ include $(CLEAR_VARS)
 #LOCAL_CFLAGS    := -ggdb -O0
 
 LOCAL_MODULE    := android_launch
-LOCAL_SRC_FILES := android-launch.c ../../gst-launch-remote/gst-launch-remote.c
+LOCAL_SRC_FILES := android-launch.c ../../../../../gst-launch-remote/gst-launch-remote.c
 LOCAL_SHARED_LIBRARIES := gstreamer_android
 LOCAL_LDLIBS := -llog -landroid
 include $(BUILD_SHARED_LIBRARY)
