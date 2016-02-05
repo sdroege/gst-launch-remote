@@ -8,6 +8,7 @@ android {
         main {
             // Avoid using the built in JNI generation plugin
             jni.srcDirs = []
+            jniLibs.srcDirs = ['build/libs']
         }
     }
 
@@ -28,16 +29,7 @@ android {
 
     // Before compiling our app, prepare NDK code
     tasks.withType(JavaCompile) {
-        compileTask -> compileTask.dependsOn ndkLibsToJar
-    }
-
-    // Packs ndk into JAR
-    task ndkLibsToJar(type: Zip, dependsOn: 'ndkBuild', description: 'Create a JAR of the native libs') {
-        destinationDir new File(buildDir, 'libs')
-        baseName 'ndk-libs'
-        extension 'jar'
-        from(new File(buildDir, 'libs')) { include '**/*.so' }
-        into 'lib/'
+        compileTask -> compileTask.dependsOn ndkBuild
     }
 
     // Build native code using mk files like on Eclipse
@@ -60,8 +52,6 @@ android {
 
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
-    // Adds our jar file containing NDK code (.so files)
-    compile files("$buildDir/libs/ndk-libs.jar")
     testCompile 'junit:junit:4.12'
     compile 'com.android.support:appcompat-v7:23.1.1'
 }
