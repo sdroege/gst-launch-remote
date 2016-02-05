@@ -39,7 +39,7 @@ android {
         if (hasProperty('gstAndroidRoot'))
             gstRoot = gstAndroidroot
         else
-            gstRoot = '~/cerbero/dist/android_armv7'
+            gstRoot = '~/cerbero/dist/android_arm'
 
         commandLine "$android.ndkDirectory/ndk-build",
                 'NDK_PROJECT_PATH=build',
