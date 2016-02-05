@@ -9,6 +9,9 @@ def getNdkCommandLine(ndkRoot, target) {
     else
         gstRoot = '~/cerbero/dist/android_arm'
 
+    if (ndkRoot == null)
+        throw new GradleException('NDK not configured')
+
     return ["$ndkRoot/ndk-build",
             'NDK_PROJECT_PATH=build',
             'APP_BUILD_SCRIPT=src/main/jni/Android.mk',
