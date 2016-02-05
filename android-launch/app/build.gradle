@@ -1,5 +1,23 @@
 apply plugin: 'com.android.application'
 
+
+def getNdkCommandLine(ndkRoot, target) {
+    def gstRoot
+
+    if (project.hasProperty('gstAndroidRoot'))
+        gstRoot = project.gstAndroidRoot
+    else
+        gstRoot = '~/cerbero/dist/android_arm'
+
+    return ["$ndkRoot/ndk-build",
+            'NDK_PROJECT_PATH=build',
+            'APP_BUILD_SCRIPT=src/main/jni/Android.mk',
+            'NDK_APPLICATION_MK=src/main/jni/Application.mk',
+            'GSTREAMER_JAVA_SRC_DIR=src/main/java',
+            "GSTREAMER_ROOT_ANDROID=$gstRoot",
+            target]
+}
+
 android {
     compileSdkVersion 23
     buildToolsVersion "23.0.2"
@@ -32,21 +50,16 @@ android {
         compileTask -> compileTask.dependsOn ndkBuild
     }
 
+    // Need to call clean on NDK ourselves too
+    clean.dependsOn 'ndkClean'
+
     // Build native code using mk files like on Eclipse
     task ndkBuild(type: Exec, description: 'Compile JNI source via NDK') {
-        def gstRoot = ''
+        commandLine getNdkCommandLine(android.ndkDirectory, 'all')
+    }
 
-        if (hasProperty('gstAndroidRoot'))
-            gstRoot = gstAndroidroot
-        else
-            gstRoot = '~/cerbero/dist/android_arm'
-
-        commandLine "$android.ndkDirectory/ndk-build",
-                'NDK_PROJECT_PATH=build',
-                'APP_BUILD_SCRIPT=src/main/jni/Android.mk',
-                'NDK_APPLICATION_MK=src/main/jni/Application.mk',
-                'GSTREAMER_JAVA_SRC_DIR=src/main/java',
-                "GSTREAMER_ROOT_ANDROID=$gstRoot"
+    task ndkClean(type: Exec, description: 'Clean JNI code built via NDK') {
+        commandLine getNdkCommandLine(android.ndkDirectory, 'clean')
     }
 }
 
