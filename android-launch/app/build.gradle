@@ -7,7 +7,7 @@ def getNdkCommandLine(ndkRoot, target) {
     if (project.hasProperty('gstAndroidRoot'))
         gstRoot = project.gstAndroidRoot
     else
-        gstRoot = '~/cerbero/dist/android_arm'
+        gstRoot = System.properties['user.home'] + '/cerbero/dist/android_arm'
 
     if (ndkRoot == null)
         throw new GradleException('NDK not configured')
