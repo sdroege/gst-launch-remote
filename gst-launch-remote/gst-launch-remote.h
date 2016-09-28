@@ -62,6 +62,9 @@ typedef struct {
   GSocket *debug_socket;
 
   GstLaunchRemoteAppContext app_context;
+
+  GstClockTime last_play_time;
+  GstClockTime last_eos_time;
 } GstLaunchRemote;
 
 /* Set callbacks manually as required */
