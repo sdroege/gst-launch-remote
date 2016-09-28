@@ -1,4 +1,5 @@
 /build
-src/main/java/org/freedesktop/gstreamer/GStreamer.java
-assets/
-gst-build-armeabi/
+/assets/
+/.externalNativeBuild
+/gst-build-*/
+/src/main/java/org/freedesktop/gstreamer
