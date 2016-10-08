@@ -379,6 +379,7 @@ error_cb (GstBus * bus, GstMessage * msg, GstLaunchRemote * self)
 
   self->target_state = GST_STATE_NULL;
   gst_element_set_state (self->pipeline, GST_STATE_NULL);
+  self->last_eos_time = gst_util_get_timestamp ();
   gst_object_unref (self->pipeline);
   if (self->video_sink)
     gst_object_unref (self->video_sink);
@@ -391,6 +392,7 @@ eos_cb (GstBus * bus, GstMessage * msg, GstLaunchRemote * self)
 {
   self->target_state = GST_STATE_NULL;
   gst_element_set_state (self->pipeline, GST_STATE_NULL);
+  self->last_eos_time = gst_util_get_timestamp ();
   gst_object_unref (self->pipeline);
   if (self->video_sink)
     gst_object_unref (self->video_sink);
@@ -723,7 +725,19 @@ read_line_cb (GObject * source_object, GAsyncResult * res, gpointer user_data)
         }
       } else {
         write_to_remote (self,
-            "Send a pipeline .dot dump to a remote port. Usage: +DUMP host-or-IP:port");
+            "Send a pipeline .dot dump to a remote port. Usage: +DUMP host-or-IP:port\n");
+      }
+    } else if (g_str_has_prefix (line, "+BENCH")) {
+      if (!GST_CLOCK_TIME_IS_VALID (self->last_play_time)) {
+        write_to_remote (self, "Not yet played, no measurement\n");
+      } else if (!GST_CLOCK_TIME_IS_VALID (self->last_eos_time)) {
+        GstClockTimeDiff diff = GST_CLOCK_DIFF (self->last_play_time, gst_util_get_timestamp ());
+
+        write_to_remote (self, "Has been playing for %" GST_TIME_FORMAT "\n", GST_TIME_ARGS (diff));
+      } else {
+        GstClockTimeDiff diff = GST_CLOCK_DIFF (self->last_play_time, self->last_eos_time);
+
+        write_to_remote (self, "Last playback ended after %" GST_TIME_FORMAT "\n", GST_TIME_ARGS (diff));
       }
     } else if (!g_str_has_prefix (line, "+") && !g_str_has_prefix (line, "-")) {
       gst_launch_remote_set_pipeline (self, line);
@@ -799,6 +813,8 @@ gst_launch_remote_set_pipeline (GstLaunchRemote * self,
   g_free (self->pipeline_string);
   self->pipeline_string = NULL;
   self->target_state = GST_STATE_NULL;
+  self->last_play_time = GST_CLOCK_TIME_NONE;
+  self->last_eos_time = GST_CLOCK_TIME_NONE;
 
   if (!pipeline_string)
     return;
@@ -1012,6 +1028,9 @@ gst_launch_remote_new (const GstLaunchRemoteAppContext * ctx)
       g_thread_new ("gst-launch-remote", gst_launch_remote_main, self);
   g_mutex_init (&self->lock);
 
+  self->last_play_time = GST_CLOCK_TIME_NONE;
+  self->last_eos_time = GST_CLOCK_TIME_NONE;
+
   return self;
 }
 
@@ -1039,6 +1058,8 @@ gst_launch_remote_play (GstLaunchRemote * self)
   }
   GST_DEBUG ("Setting state to PLAYING");
 
+  self->last_play_time = gst_util_get_timestamp ();
+  self->last_eos_time = GST_CLOCK_TIME_NONE;
   self->target_state = GST_STATE_PLAYING;
   state_ret = gst_element_set_state (self->pipeline, GST_STATE_PLAYING);
   self->is_live = (state_ret == GST_STATE_CHANGE_NO_PREROLL);
