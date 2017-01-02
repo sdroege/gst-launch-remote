@@ -44,7 +44,10 @@ android {
     }
 }
 
-tasks.getByName('sourceSets').dependsOn 'externalNativeBuildDebug'
+afterEvaluate {
+    compileDebugJavaWithJavac.dependsOn 'externalNativeBuildDebug'
+    compileReleaseJavaWithJavac.dependsOn 'externalNativeBuildRelease'
+}
 
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
