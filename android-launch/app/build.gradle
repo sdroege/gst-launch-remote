@@ -20,7 +20,7 @@ android {
                 else
                     throw new GradleException('"gstAndroidRoot" must be defined in your gradle.properties to the top level directory of the unpacked universal GStreamer Android binaries')
 
-                arguments "GSTREAMER_JAVA_SRC_DIR=src/main/java", "GSTREAMER_ROOT_ANDROID=$gstRoot"
+                arguments "GSTREAMER_JAVA_SRC_DIR=src/main/java", "GSTREAMER_ROOT_ANDROID=$gstRoot", "GSTREAMER_ASSETS_DIR=src/main/assets"
 
                 targets "android_launch", "gstreamer_android"
 
